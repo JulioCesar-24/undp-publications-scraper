@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 import * as fs from "fs";
 
 async function fetchWithChrome(url: string): Promise<string> {
-  const client = await CDP();
+  const client = await CDP({ port: 9223 });
   const { Network, Page } = client;
 
   await Network.enable();
@@ -13,7 +13,8 @@ async function fetchWithChrome(url: string): Promise<string> {
     let requestId: string | null = null;
 
     Network.requestWillBeSent((params: any) => {
-      if (params.request.url === url) {
+      // Aceptar redirecciones y variaciones
+      if (params.request.url.startsWith(url)) {
         requestId = params.requestId;
       }
     });
@@ -21,7 +22,15 @@ async function fetchWithChrome(url: string): Promise<string> {
     Network.loadingFinished(async (params: any) => {
       if (params.requestId === requestId) {
         const body = await Network.getResponseBody({ requestId });
-        resolve(body.body);
+
+        let text = body.body;
+
+        // Si viene en base64, decodificar
+        if (body.base64Encoded) {
+          text = Buffer.from(text, "base64").toString("utf-8");
+        }
+
+        resolve(text);
         await client.close();
       }
     });
@@ -35,6 +44,13 @@ async function scrapeUNDP() {
 
   const sitemapUrl = "https://www.undp.org/sitemap-publications.xml";
   const xml = await fetchWithChrome(sitemapUrl);
+
+  // Debug si viene vacío
+  if (!xml || xml.trim().length < 20) {
+    console.log("⚠ El sitemap vino vacío. Contenido recibido:");
+    console.log(xml);
+    return;
+  }
 
   const urls = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1]);
   console.log(`Publicaciones encontradas: ${urls.length}`);
@@ -69,3 +85,4 @@ async function scrapeUNDP() {
 }
 
 scrapeUNDP();
+
