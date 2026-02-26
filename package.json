@@ -8,8 +8,11 @@
     "download": "ts-node src/download_pdfs.ts",
     "scrape-html": "ts-node src/scrape_undp_html.ts",
     "scrape-puppeteer": "ts-node src/scrape_undp_puppeteer.ts",
-    "scrape-sitemap": "ts-node src/scrape_undp_sitemap_cdp.ts",
-    "scrape-undp": "ts-node src/scrape_undp_api.ts"
+    "scrape-sitemap": "ts-node src/scrape_undp.ts",
+    "scrape-undp": "ts-node src/scrape_undp_api.ts",
+    "scrape-playwright": "ts-node src/scrape_undp_playwright.ts",
+    "scrape-nasa": "ts-node src/scrape_nasa.ts",
+    "scrape-test": "ts-node src/scrape_test.ts"
   },
   "repository": {
     "type": "git",
