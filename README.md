@@ -1,36 +1,22 @@
 # undp-publications-scraper
 
-UNDP Publications Scraper — Informe de Trabajo
-Este documento resume el proceso de desarrollo, pruebas y dificultades encontradas al intentar construir un scraper para obtener publicaciones y enlaces a PDF desde el sitio oficial de UNDP (United Nations Development Programme).
+1. Requisitos previos
+Antes de ejecutar cualquier scraper necesitas:
 
-El objetivo del proyecto era:
+Node.js (versión 16 o superior)
 
-Extraer todas las publicaciones de UNDP
-
-Obtener sus URLs
-
-Identificar los enlaces a PDF
-
-Generar un CSV con los resultados
-
-A continuación se detalla todo el trabajo realizado.
-
-Cómo ejecutar el proyecto
-A continuación se detallan los pasos para instalar y ejecutar el scraper tal como se probó durante el desarrollo.
-
-Requisitos previos
-Node.js instalado
+npm (incluido con Node)
 
 Google Chrome instalado
 
-Git Bash o PowerShell
+Git Bash / PowerShell / CMD en Windows
 
-1. Instalar dependencias
-En la carpeta del proyecto:
+ 2. Instalar dependencias
+En la carpeta raíz del proyecto:
 
-Código
+bash
 npm install
-Esto instalará:
+Esto instalará todas las librerías necesarias:
 
 axios
 
@@ -38,208 +24,109 @@ cheerio
 
 ts-node
 
-chrome-remote-interface (si se usa el scraper CDP)
+playwright
 
-2. Abrir Chrome en modo debugging
-Este paso es necesario para el scraper basado en CDP.
+chrome-remote-interface (solo para el scraper CDP)
 
-Chrome debe abrirse con:
+otras dependencias del proyecto
+
+ 3. Estructura de scripts disponibles
+En package.json tienes varios comandos que ejecutan distintos scrapers:
+
+Script	Archivo ejecutado	Descripción
+npm run start	src/scrape_undp.ts	Scraper base (Axios)
+npm run scrape-sitemap	src/scrape_undp.ts	Scraper por sitemap (bloqueado por UNDP)
+npm run scrape-html	src/scrape_undp_html.ts	Scraper HTML simple
+npm run scrape-puppeteer	src/scrape_undp_puppeteer.ts	Scraper Puppeteer
+npm run scrape-undp	src/scrape_undp_api.ts	Scraper API (endpoint no disponible)
+npm run scrape-playwright	src/scrape_undp_playwright.ts	Scraper Playwright
+npm run scrape-test	src/scrape_test.ts	Scraper de prueba (funciona siempre)
+🧪 4. Ejecutar el scraper de prueba (recomendado)
+Este scraper siempre funciona y sirve para verificar que tu entorno está bien configurado:
+
+bash
+npm run scrape-test
+Genera:
 
 Código
---remote-debugging-port=9222
-Ejemplo en Windows (Git Bash):
+quotes.csv
+ 5. Ejecutar el scraper Playwright para UNDP
+Este es el scraper principal que intenta obtener publicaciones de UNDP:
 
-Código
-"/c/Program Files/Google/Chrome/Application/chrome.exe" --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev"
-Nota: Chrome debe estar completamente cerrado antes de ejecutar este comando.
+bash
+npm run scrape-playwright
+Este comando:
 
-3. Verificar que Chrome está escuchando
-En Chrome, abrir:
+abre un navegador real con Playwright
 
-Código
-http://localhost:9222/json/version
-Si aparece un JSON, Chrome está listo.
+navega por las páginas de publicaciones
 
-4. Ejecutar el scraper
-Dependiendo del script configurado en package.json:
+intenta extraer títulos, URLs y PDFs
 
-Código
-npm run scrape-sitemap
-El scraper:
+genera un archivo CSV con los resultados
 
-Se conecta a Chrome real
-
-Intenta descargar el sitemap
-
-Procesa las publicaciones
-
-Genera un archivo CSV
-
-5. Resultado
-El programa genera:
+Salida esperada:
 
 Código
 undp_publicaciones_pdfs.csv
-Con columnas:
+Nota: UNDP utiliza Akamai Bot Manager, un sistema anti‑bot muy agresivo.
+Dependiendo de la IP, cookies o fingerprint, puede devolver páginas vacías.
 
-Título
+ 6. Ejecutar el scraper CDP (Chrome real)
+Este método usa tu navegador Chrome real para evitar bloqueos.
 
-URL del PDF
+6.1. Abrir Chrome en modo debugging
+Chrome debe estar completamente cerrado antes de ejecutar esto:
 
-URL de la publicación
-
-1. Primer enfoque: Scraping tradicional con Playwright/Puppeteer
-Se intentó inicialmente:
-
-Navegar la web con Playwright
-
-Renderizar el HTML
-
-Extraer los enlaces a PDF
-
-Resultado
-UNDP utiliza Akamai Bot Manager, un sistema anti‑bot muy agresivo.
-Esto provocó:
-
-Bloqueos constantes
-
-HTML incompleto
-
-Respuestas parciales
-
-Redirecciones a páginas de error
-
-Detección de automatización incluso con técnicas stealth
-
-Conclusión:  
-El scraping tradicional con navegador automatizado no es viable.
-
-2. Segundo enfoque: Scraping directo del sitemap con Axios
-Se intentó acceder al sitemap oficial:
+bash
+"C:/Program Files/Google/Chrome/Application/chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:/chrome_dev"
+6.2. Verificar que Chrome está escuchando
+Abre en tu navegador:
 
 Código
-https://www.undp.org/sitemap-publications.xml
-Este sitemap contiene todas las publicaciones, por lo que era la vía ideal.
+http://localhost:9222/json/version
+Si ves un JSON, Chrome está listo.
 
-Resultado
-Incluso el sitemap devolvía:
+6.3. Ejecutar el scraper CDP
+bash
+npm run scrape-sitemap
+ 7. Archivos generados
+Dependiendo del scraper, se generan:
 
-Código
-403 Forbidden — Access Denied
-Akamai también bloquea:
+undp_publicaciones_pdfs.csv
 
-Axios
+quotes.csv
 
-curl
+otros CSV según el script ejecutado
 
-Node.js
+ 8. Limitaciones conocidas
+UNDP utiliza Akamai Bot Manager, lo que provoca:
 
-Cualquier petición sin fingerprint de navegador real
+bloqueo de Axios
 
-Conclusión:  
-UNDP bloquea incluso el acceso al sitemap desde scripts.
+bloqueo de Playwright/Puppeteer
 
-3. Tercer enfoque: Chrome real + CDP (Chrome DevTools Protocol)
-Se exploró una solución profesional:
+bloqueo de perfiles vacíos
 
-Abrir Chrome real con --remote-debugging-port
+bloqueo del sitemap
 
-Conectarse desde Node usando CDP
+respuestas vacías o incompletas
 
-Hacer las peticiones desde el navegador real del usuario
+detección de automatización
 
-Evitar así cualquier detección de bot
+Por este motivo, algunos scrapers pueden devolver 0 resultados aunque el código sea correcto.
 
-Problemas encontrados
-Chrome no escuchaba en el puerto cuando se usaba el perfil real
+ 9. Estado actual del proyecto
+El proyecto incluye múltiples enfoques:
 
-Con un perfil temporal sí escuchaba, pero Akamai devolvía un sitemap vacío
+Scraping con Axios → bloqueado por Akamai
 
-Se intentó copiar el perfil real, pero Windows no permitió copiar todos los archivos
+Scraping con Playwright → bloqueado parcialmente
 
-El scraper conectaba correctamente, pero obtenía 0 publicaciones
+Scraping con Puppeteer → bloqueado
 
-Conclusión:  
-Akamai detecta perfiles vacíos y sigue bloqueando el acceso al sitemap.
+Scraping con Chrome real vía CDP → conecta, pero recibe contenido vacío
 
-4. Estado actual del proyecto
-Se desarrollaron:
+Scraper de prueba → funciona correctamente
 
-Un scraper basado en Axios (bloqueado por Akamai)
-
-Un scraper basado en Playwright (bloqueado por Akamai)
-
-Un scraper basado en Chrome real + CDP (conectó correctamente, pero Akamai devolvió sitemap vacío)
-
-Se realizaron múltiples pruebas:
-
-Cambios de puerto
-
-Perfiles temporales
-
-Perfiles duplicados
-
-Verificación de debugging
-
-Pruebas con curl
-
-Pruebas con Edge
-
-El trabajo demuestra:
-
-Investigación profunda
-
-Pruebas exhaustivas
-
-Conocimiento de anti‑botting moderno
-
-Implementación de varias técnicas avanzadas de scraping
-
-Documentación de errores y resultados
-
-5. Conclusión general
-UNDP utiliza un sistema anti‑bot extremadamente restrictivo que:
-
-Bloquea navegadores automatizados
-
-Bloquea peticiones desde Node
-
-Bloquea incluso el acceso al sitemap
-
-Devuelve contenido vacío a perfiles sin historial
-
-Requiere un fingerprint humano completo para funcionar
-
-El proyecto avanzó técnicamente, pero el acceso a los datos sigue limitado por las medidas anti‑bot del sitio.
-
-6. Trabajo realizado (resumen rápido)
-✔ Investigación de arquitectura del sitio
-
-✔ Pruebas con Playwright
-
-✔ Pruebas con Puppeteer
-
-✔ Pruebas con Axios
-
-✔ Análisis de respuestas HTML incompletas
-
-✔ Identificación de Akamai Bot Manager
-
-✔ Implementación de scraper CDP
-
-✔ Configuración de Chrome en modo debugging
-
-✔ Pruebas con perfiles temporales
-
-✔ Intento de duplicar perfil real
-
-✔ Documentación de errores y resultados
-
-7. Próximos pasos posibles
-Intentar scraping con un navegador real controlado manualmente
-
-Usar un servicio de scraping profesional con fingerprinting avanzado
-
-Solicitar acceso a la API de UNDP (si existe)
-
-Realizar scraping manual asistido
+Esto demuestra que el entorno funciona, pero UNDP aplica restricciones severas.

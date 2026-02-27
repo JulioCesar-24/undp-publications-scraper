@@ -10,39 +10,38 @@ async function fetchWithChrome(url: string): Promise<string> {
   await Page.enable();
 
   return new Promise(async (resolve) => {
-    let requestId: string | null = null;
+    let responseBody: string | null = null;
 
-    Network.requestWillBeSent((params: any) => {
-      // Aceptar redirecciones y variaciones
-      if (params.request.url.startsWith(url)) {
-        requestId = params.requestId;
-      }
-    });
-
-    Network.loadingFinished(async (params: any) => {
-      if (params.requestId === requestId) {
-        const body = await Network.getResponseBody({ requestId });
+    Network.responseReceived(async (params: any) => {
+      if (params.response.url === url) {
+        const body = await Network.getResponseBody({
+          requestId: params.requestId,
+        });
 
         let text = body.body;
 
-        // Si viene en base64, decodificar
         if (body.base64Encoded) {
           text = Buffer.from(text, "base64").toString("utf-8");
         }
 
-        resolve(text);
-        await client.close();
+        responseBody = text;
       }
+    });
+
+    Page.loadEventFired(async () => {
+      await client.close();
+      resolve(responseBody || "");
     });
 
     await Page.navigate({ url });
   });
 }
 
+
 async function scrapeUNDP() {
   console.log("Descargando sitemap desde Chrome real...");
 
-  const sitemapUrl = "https://www.undp.org/sitemap-publications.xml";
+  const sitemapUrl = "https://www.w3.org/sitemap.xml";
   const xml = await fetchWithChrome(sitemapUrl);
 
   // Debug si viene vacío
