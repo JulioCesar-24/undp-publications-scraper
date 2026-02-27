@@ -2,7 +2,7 @@ import CDP from "chrome-remote-interface";
 import * as fs from "fs";
 import * as cheerio from "cheerio";
 
-async function extractFromTab(target: any, client: any) {
+async function extractFromTab(info: { url: string }, client: any) {
   const { Runtime } = client;
 
   const result = await Runtime.evaluate({
@@ -18,7 +18,7 @@ async function extractFromTab(target: any, client: any) {
   const pdf = $("a.button--download").attr("href") || "";
 
   return {
-    url: target.url,
+    url: info.url,
     title,
     date,
     pdf
@@ -41,13 +41,23 @@ async function main() {
   const rows = [["Título", "Fecha", "PDF", "URL"]];
 
   for (const target of pages) {
-    const tab = await CDP({ target });
-    const data = await extractFromTab(target, tab);
+    const tab = await CDP({ target: target.targetId });
+
+    const data = await extractFromTab(
+      { url: target.url },
+      tab
+    );
+
     rows.push([data.title, data.date, data.pdf, data.url]);
+
     await tab.close();
   }
 
-  fs.writeFileSync("undp_manual_extract.csv", rows.map(r => r.join(",")).join("\n"));
+  fs.writeFileSync(
+    "undp_manual_extract.csv",
+    rows.map(r => r.join(",")).join("\n")
+  );
+
   console.log("CSV generado: undp_manual_extract.csv");
 
   await client.close();
