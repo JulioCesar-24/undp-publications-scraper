@@ -13,7 +13,8 @@
     "scrape-playwright": "ts-node src/scrape_undp_playwright.ts",
     "scrape-nasa": "ts-node src/scrape_nasa.ts",
     "scrape-test": "ts-node src/scrape_test.ts",
-    "extract-manual": "ts-node src/extract_manual.ts"
+    "extract-manual": "ts-node src/extract_manual.ts",
+    "scrape-friday": "ts-node src/scrape_friday_undp.ts"
   },
   "repository": {
     "type": "git",

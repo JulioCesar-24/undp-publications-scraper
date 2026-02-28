@@ -1,70 +1,138 @@
-import { chromium } from "playwright";
+import { chromium, Page } from "playwright";
 import * as fs from "fs";
 
-async function scrapeUNDP() {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
+const BASE = "https://www.undp.org";
 
-  let pageNumber = 0;
-  const rows: string[] = [];
-  rows.push("Titulo,PDF,URL");
+interface PublicationRow {
+  title: string;
+  date: string;
+  pdf: string;
+  url: string;
+}
 
-  while (true) {
-    const url = `https://www.undp.org/search?search=&f%5B0%5D=type%3Apublication&page=${pageNumber}`;
-    console.log(`Scrapeando página ${pageNumber}...`);
+// 🔹 Extrae links de las publicaciones de la página de listado
+async function scrapeListing(page: Page, pageNumber: number): Promise<string[]> {
+  const url = `${BASE}/publications?page=${pageNumber}`;
+  console.log(`📄 Scrapeando listado página ${pageNumber}...`);
 
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+
+  // Espera que carguen los resultados reales
+  try {
+    await page.waitForSelector(".views-row", { timeout: 15000 });
+  } catch {
+    console.log("⚠ No se encontraron publicaciones en esta página.");
+    return [];
+  }
+
+  // Extrae los links de cada publicación
+  const links = await page.$$eval(
+    ".views-row h3 a",
+    anchors => anchors.map(a => (a as HTMLAnchorElement).href)
+  );
+
+  return links;
+}
+
+// 🔹 Extrae título, fecha y PDFs de cada publicación
+async function scrapeDetail(page: Page, url: string): Promise<PublicationRow[]> {
+  try {
     await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    // Esperar a que aparezcan resultados
-    try {
-      await page.waitForSelector(".search-result", { timeout: 15000 });
-    } catch {
-      console.log("No hay más publicaciones. Fin.");
+    const title = (await page.locator("h1").first().innerText()).trim();
+
+    let date = "";
+    const timeLocator = page.locator("time").first();
+    if (await timeLocator.count()) {
+      date = (await timeLocator.innerText()).trim();
+    }
+
+    const pdfLinks = await page.$$eval("a[href$='.pdf']", anchors =>
+      anchors.map(a => (a as HTMLAnchorElement).href)
+    );
+
+    if (pdfLinks.length === 0) {
+      return [{ title, date, pdf: "", url }];
+    }
+
+    return pdfLinks.map(pdf => ({
+      title,
+      date,
+      pdf,
+      url
+    }));
+  } catch (error) {
+    console.log(`⚠ Error procesando ${url}`);
+    return [];
+  }
+}
+
+// 🔹 Función principal
+async function main() {
+  const browser = await chromium.launch({
+    headless: false, // visible para debug; cambiar a true cuando funcione
+    slowMo: 50 // simula interacción humana
+  });
+
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  });
+
+  const page = await context.newPage();
+
+  const visited = new Set<string>();
+  const results: PublicationRow[] = [];
+
+  let pageNumber = 0;
+
+  while (true) {
+    const links = await scrapeListing(page, pageNumber);
+
+    if (!links || links.length === 0) {
+      console.log("✅ No hay más páginas.");
       break;
     }
 
-    const cards = await page.$$(".search-result");
-    console.log(`Publicaciones encontradas: ${cards.length}`);
+    for (const link of links) {
+      if (!visited.has(link)) {
+        visited.add(link);
 
-    if (cards.length === 0) break;
+        console.log("➡ Procesando:", link);
 
-    for (const card of cards) {
-      const title = await card.$eval("h3.search-result__title a", el => el.textContent?.trim() || "");
-      const link = await card.$eval("h3.search-result__title a", el => (el as HTMLAnchorElement).href);
+        const rows = await scrapeDetail(page, link);
+        results.push(...rows);
 
-      const detail = await browser.newPage();
-      await detail.goto(link, { waitUntil: "domcontentloaded" });
-
-      // Esperar un poco para que cargue el contenido
-      await detail.waitForTimeout(2000);
-
-      const pdfs = await detail.$$eval("a", els =>
-        els
-          .map(a => (a as HTMLAnchorElement).href)
-          .filter(h => h.toLowerCase().endsWith(".pdf"))
-      );
-
-      if (pdfs.length === 0) {
-        rows.push(`"${title}",SIN_PDF,${link}`);
-      } else {
-        for (const pdf of pdfs) {
-          rows.push(`"${title}",${pdf},${link}`);
-        }
+        await page.waitForTimeout(300); // pausa para comportamiento humano
       }
-
-      await detail.close();
     }
 
     pageNumber++;
   }
 
-  fs.writeFileSync("undp_publicaciones_pdfs.csv", rows.join("\n"), "utf-8");
-  console.log("CSV generado con éxito.");
+  // 🔹 Generar CSV
+  const csvRows = [
+    ["Título", "Fecha", "PDF", "URL"],
+    ...results.map(r => [r.title, r.date, r.pdf, r.url])
+  ];
+
+  fs.writeFileSync(
+    "undp_publicaciones_pdfs.csv",
+    csvRows
+      .map(row =>
+        row.map(field => `"${field.replace(/"/g, '""')}"`).join(",")
+      )
+      .join("\n"),
+    "utf-8"
+  );
+
+  console.log(`🎉 CSV generado con ${results.length} registros.`);
 
   await browser.close();
 }
 
-scrapeUNDP();
+// 🔹 Ejecutar
+main();
 
 
 
