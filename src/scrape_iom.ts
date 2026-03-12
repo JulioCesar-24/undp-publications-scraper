@@ -2,6 +2,7 @@ import { chromium, Page } from "playwright";
 import * as fs from "fs";
 
 const BASE = "https://publications.iom.int/search";
+const MAX_CONCURRENCY = 8; // Ajusta entre 5 y 12 según tu máquina
 
 interface PublicationRow {
   title: string;
@@ -11,7 +12,7 @@ interface PublicationRow {
 }
 
 async function scrapeListing(page: Page, pageNumber: number): Promise<string[]> {
-  const url = `${BASE}?page=${pageNumber}`;
+  const url = `${BASE}?search=&page=${pageNumber}`;
   console.log(`📄 Scrapeando listado página ${pageNumber}...`);
 
   await page.goto(url, { waitUntil: "networkidle" });
@@ -19,15 +20,14 @@ async function scrapeListing(page: Page, pageNumber: number): Promise<string[]> 
   try {
     await page.waitForSelector(".views-row", { timeout: 15000 });
   } catch {
+    console.log("⚠ No se encontraron publicaciones en esta página.");
     return [];
   }
 
-  const links = await page.$$eval(
+  return await page.$$eval(
     ".views-row .views-field-title a",
     anchors => anchors.map(a => (a as HTMLAnchorElement).href)
   );
-
-  return links;
 }
 
 async function scrapeDetail(page: Page, url: string): Promise<PublicationRow[]> {
@@ -43,7 +43,9 @@ async function scrapeDetail(page: Page, url: string): Promise<PublicationRow[]> 
     }
 
     const pdfLinks = await page.$$eval("a[href*='.pdf']", anchors =>
-      anchors.map(a => new URL((a as HTMLAnchorElement).href, location.origin).href)
+      anchors.map(a =>
+        new URL((a as HTMLAnchorElement).href, (window as any).location.origin).href
+      )
     );
 
     if (pdfLinks.length === 0) {
@@ -58,10 +60,10 @@ async function scrapeDetail(page: Page, url: string): Promise<PublicationRow[]> 
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: false, slowMo: 50 });
+  const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext();
 
-  const page = await context.newPage();
+  const listPage = await context.newPage();
 
   const visited = new Set<string>();
   const results: PublicationRow[] = [];
@@ -69,21 +71,39 @@ async function main() {
   let pageNumber = 0;
 
   while (true) {
-    const links = await scrapeListing(page, pageNumber);
+    const links = await scrapeListing(listPage, pageNumber);
+    if (!links.length) {
+      console.log("✅ No hay más páginas.");
+      break;
+    }
 
-    if (!links.length) break;
+    const newLinks = links.filter(l => !visited.has(l));
+    newLinks.forEach(l => visited.add(l));
 
-    for (const link of links) {
-      if (visited.has(link)) continue;
+    if (!newLinks.length) {
+      pageNumber++;
+      continue;
+    }
 
-      visited.add(link);
-      console.log("➡ Procesando:", link);
+    console.log(`➡ Procesando ${newLinks.length} publicaciones en paralelo...`);
 
-      const detailPage = await context.newPage();
-      const rows = await scrapeDetail(detailPage, link);
-      await detailPage.close();
+    // Crear pool de workers (páginas reales)
+    const workers: Page[] = [];
+    for (let i = 0; i < MAX_CONCURRENCY; i++) {
+      workers.push(await context.newPage());
+    }
 
+    const tasks = newLinks.map(async (link, i) => {
+      const worker = workers[i % MAX_CONCURRENCY];
+      const rows = await scrapeDetail(worker, link);
       results.push(...rows);
+    });
+
+    await Promise.allSettled(tasks);
+
+    // Cerrar workers
+    for (const w of workers) {
+      await w.close();
     }
 
     pageNumber++;
@@ -96,7 +116,9 @@ async function main() {
 
   fs.writeFileSync(
     "iom_publicaciones_pdfs.csv",
-    csvRows.map(row => row.map(f => `"${f.replace(/"/g, '""')}"`).join(",")).join("\n"),
+    csvRows
+      .map(row => row.map(f => `"${f.replace(/"/g, '""')}"`).join(","))
+      .join("\n"),
     "utf-8"
   );
 
@@ -106,11 +128,5 @@ async function main() {
 }
 
 main();
-
-
-
-
-
-
 
 
