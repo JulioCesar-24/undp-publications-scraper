@@ -1,3 +1,7 @@
 node_modules/
 dist/
 undp_publicaciones_pdfs.csv
+.DS_Store
+canal_isabel_pdfs/
+canal_isabel_zips/
+*.zip
